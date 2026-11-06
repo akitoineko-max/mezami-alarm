@@ -21,16 +21,21 @@ jobs:
         os: [macos-26, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Select newest Xcode
+      - name: Select Xcode 26
         run: |
-          ls /Applications | grep -i xcode || true
-          NEWEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          echo "Using $NEWEST"
-          sudo xcode-select -s "$NEWEST"
+          # AlarmKit（iOS 26 SDK）には Xcode 26 が必要。
+          # Xcode 27 は Apple silicon 専用のため、Intel ランナーでは選ばない。
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          fi
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -50,13 +55,23 @@ jobs:
           WS=$(ls -d ios/*.xcworkspace | head -1)
           SCHEME=$(basename "$WS" .xcworkspace)
           echo "Workspace: $WS / Scheme: $SCHEME"
+          set -o pipefail
           xcodebuild build \
             -workspace "$WS" \
             -scheme "$SCHEME" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DD \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log
+
+      - name: Surface build errors
+        if: failure()
+        run: |
+          # ビルドログの error 行を注釈として出す（公開リポジトリなら認証なしで読める）。
+          grep -E "error:" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::${line:0:500}"
+          done
+          echo "--- error lines above (if any) ---"
 
       - name: Package unsigned IPA
         run: |
