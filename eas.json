@@ -1,0 +1,1 @@
+{"build":{"preview":{"distribution":"internal","ios":{"simulator":false}},"production":{},"simulator":{"ios":{"simulator":true}}},"cli":{"version":">= 13.0.0"}}

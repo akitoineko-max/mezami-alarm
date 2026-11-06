@@ -1,0 +1,64 @@
+name: Build unsigned IPA
+
+# Mac を持っていなくても、GitHub の macOS ランナーで iOS アプリをビルドし、
+# 署名なし .ipa を作るためのワークフロー。
+# できた .ipa は SideStore（無料署名）で自分の iPhone に入れる。手順は README 参照。
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          ls /Applications | grep -i xcode || true
+          NEWEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $NEWEST"
+          sudo xcode-select -s "$NEWEST"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild (generate ios project)
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install pods
+        working-directory: ios
+        run: pod install
+
+      - name: Build app (no code signing)
+        run: |
+          WS=$(ls -d ios/*.xcworkspace | head -1)
+          SCHEME=$(basename "$WS" .xcworkspace)
+          echo "Workspace: $WS / Scheme: $SCHEME"
+          xcodebuild build \
+            -workspace "$WS" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DD \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package unsigned IPA
+        run: |
+          APP=$(ls -d build/DD/Build/Products/Release-iphoneos/*.app | head -1)
+          echo "App: $APP"
+          rm -rf Payload Mezami-unsigned.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qr Mezami-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mezami-unsigned-ipa
+          path: Mezami-unsigned.ipa
