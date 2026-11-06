@@ -10,11 +10,16 @@ on:
 
 jobs:
   build:
-    # 2026-11 初旬、macOS arm64 ランナー（macos-15 / macos-26 / macos-latest）は
-    # GitHub 側の capacity constraint でランナーが割り当たらず 15 分で cancel される
-    # 事例が多発したため、別プールの Intel ランナーを使う。
+    # 2026-11 初旬、GitHub の macOS ランナーは capacity constraint で
+    # ランナーが割り当てられず 15 分で cancel される事例が多発している。
+    # 複数のプール（arm64 / Intel）を並行で試し、どれか1つでも
+    # ランナーを掴めばビルドが進むようにしている。
     # iOS のデバイス向けビルドはホストが Intel でも問題なく行える。
-    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,5 +69,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Mezami-unsigned-ipa
+          name: Mezami-unsigned-ipa-${{ matrix.os }}
           path: Mezami-unsigned.ipa
